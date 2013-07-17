@@ -67,8 +67,6 @@ var http = require('http'),
 	};
 
 
-// list();
-// start('PROspeRAssistRM');
 var fn, app, param, i = 2, p, fnList = Object.keys(run);
 
 for (; p = process.argv[i++] ;) {
@@ -80,5 +78,3 @@ for (; p = process.argv[i++] ;) {
 if (param === '-v') ver();
 else if (typeof run[fn] === 'function') run[fn](app, param);
 else help();
-
-
