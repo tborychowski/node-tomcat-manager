@@ -5,7 +5,16 @@ nodejs-based simple command-line tomcat manager
 
 Usage
 -----
+Make sure you have a user "tomcat" with password "tomcat" and manager roles assigned, in your tomcat-users.xml file, e.g.:
 
+	<tomcat-users>
+		<role rolename="manager-gui"/>
+		<role rolename="manager-script"/>
+		<user username="tomcat" password="tomcat" roles="manager-gui, manager-script"/>
+	</tomcat-users>
+
+Usage:
+	
     tomcat [function] [arguments]
 
 	Function
