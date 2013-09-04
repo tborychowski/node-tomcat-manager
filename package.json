@@ -1,0 +1,8 @@
+{
+  "name": "node-tomcat-manager",
+  "description": "",
+  "version": "2.0.0",
+  "dependencies": {
+    "arg-parser": "git://github.com/tborychowski/node-arg-parser.git"
+  }
+}
