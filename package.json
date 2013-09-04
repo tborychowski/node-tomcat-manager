@@ -1,8 +1,9 @@
 {
   "name": "node-tomcat-manager",
-  "description": "",
+  "description": "nodejs tomcat manager",
   "version": "2.0.0",
   "dependencies": {
     "arg-parser": "git://github.com/tborychowski/node-arg-parser.git"
-  }
+  },
+  "repository": { "type": "git", "url": "https://github.com/tborychowski/node-tomcat-manager.git" }
 }
