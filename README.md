@@ -2,6 +2,13 @@ node-tomcat-manager
 ===================
 nodejs-based simple command-line tomcat manager
 
+
+Install
+-------
+
+	npm install node-tomcat-manager
+	
+
 Usage
 -----
 Make sure you have a user "tomcat" with password "tomcat" and manager roles assigned, in your tomcat-users.xml file, e.g.:
