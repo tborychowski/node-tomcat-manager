@@ -1,6 +1,6 @@
 /*global console, require, Buffer */
 var Args = new require('arg-parser'), args,
-	Msg = require('msg'),
+	Msg = require('node-msg'),
 	Http = require('http'),
 	urlCfg = {
 		hostname: 'localhost',

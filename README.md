@@ -2,7 +2,6 @@ node-tomcat-manager
 ===================
 nodejs-based simple command-line tomcat manager
 
-
 Usage
 -----
 Make sure you have a user "tomcat" with password "tomcat" and manager roles assigned, in your tomcat-users.xml file, e.g.:
@@ -15,26 +14,25 @@ Make sure you have a user "tomcat" with password "tomcat" and manager roles assi
 
 Usage:
 	
-    tomcat [function] [arguments]
+    tomcat [options] <func> <app>
+	
+    <func>          One of the below:
+                       list         show applications
+                       stop         stop an application
+                       start        start an application
+                       restart      restart an application
+                       undeploy     undeploy an application
+                       kill         stop and undeploy an application
+    <app>           Application name
 
-	Function
-	 list           show applications
-	 stop           stop an application
-	 start          start an application
-	 undeploy       undeploy an application
-	 kill           stop and undeploy an application
-
-	Arguments
-	 -v             show script version
-	 -h             show script help
-	 -all           show all applications (if used with "list")
-	 [app name]     do something with that app
+    -a, --all       also show ignored applications (like /docs, /examples, /manager)
+    -h, --help      display help & usage
+    -v, --version   display cli name & version
 
 
 Examples
 --------
-
-	tomcat list -all      :: show all deployed applications
+	tomcat list -al       :: show all deployed applications
 	tomcat stop myApp     :: stop an application
 	
 
