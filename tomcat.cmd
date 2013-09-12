@@ -1,2 +1,1 @@
-@echo off
-node %~dp0/tomcat.js %*
+@node %~dp0/%~n0.js %*

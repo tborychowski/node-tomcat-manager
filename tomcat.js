@@ -16,28 +16,7 @@ var Args = new require('arg-parser'), args,
 			res.on('end', function () { cb(resp); });
 		}).on('error', function (e) { console.log('Error: ' + e.message); }).end();
 	},
-	_spaces = function (i, chr) { if (i < 0) return ''; return new Array(i || 1).join(chr || ' '); },
-	_printList = function (apps) {
-		var lenApp = 1, lenStat = 7, lenSess = 8, lenPath = 1;
-		apps.forEach(function (app) {
-			lenApp = Math.max(lenApp, app.name.length);
-			lenStat = Math.max(lenStat, app.status.length);
-			lenSess = Math.max(lenSess, (app.sessions + '').length);
-			lenPath = Math.max(lenPath, app.path.length);
-		});
-		lenApp += 5;
-		lenStat ++;
-		lenSess ++;
-		lenPath += 5;
-		console.log('Path' + _spaces(lenPath - 4) + ' Status' + _spaces(lenStat - 6) +
-			' Sessions\n' + _spaces(lenPath, '-') + ' ' + _spaces(lenStat, '-') + ' ' + _spaces(lenSess, '-'));
 
-		apps.forEach(function (app) {
-			console.log(app.path + _spaces(lenPath - app.path.length) + ' ' +
-				app.status + _spaces(lenStat - app.status.length) + ' ' +
-				app.sessions + _spaces(lenSess - ('' + app.sessions).length));
-		});
-	},
 	_formatResponse = function (msg) {
 		msg = msg.trim()
 			.replace(/(OK - )(.+)/g, Msg.cyan('[OK]') + ' $2')
@@ -46,7 +25,9 @@ var Args = new require('arg-parser'), args,
 	},
 
 	_list = function (params) {
-		var apps = [], ignoredApps = [ 'ROOT', 'manager', 'docs', 'examples', 'host-manager' ];
+		var ignoredApps = [ 'ROOT', 'manager', 'docs', 'examples', 'host-manager' ],
+			apps = [ ['Path', 'Status', 'Sessions'] ];
+
 		_get('list', function (resp) {
 			resp.split('\n').forEach(function (line) {
 				if (line.indexOf('OK - Listed applications') === 0) return;
@@ -55,9 +36,10 @@ var Args = new require('arg-parser'), args,
 				line = line.split(':');
 				if (ignoredApps.indexOf(line[3]) > -1 && !params.all && !params.app) return;
 				if (typeof params.app !== 'undefined' && line[3] !== params.app) return;
-				apps.push({ name: line[3], status: line[1], path: line[0], sessions: line[2] });
+				// { name: line[3], status: line[1], path: line[0], sessions: line[2] }
+				apps.push([ line[0], line[1], line[2] ]);
 			});
-			_printList(apps);
+			Msg.table(apps);
 		});
 	},
 	_stop = function (params) { _get('stop?path=/' + params.app, _formatResponse); },
@@ -106,7 +88,3 @@ if (args.parse()) {
 	if (typeof _run[args.params.func] === 'function') _run[args.params.func](args.params);
 	else Msg.error('Unknown function');
 }
-
-
-
-
