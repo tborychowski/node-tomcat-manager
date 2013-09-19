@@ -39,7 +39,7 @@ Usage:
 
 Examples
 --------
-	tomcat list -al       :: show all deployed applications
+	tomcat list -a        :: show all deployed applications
 	tomcat stop myApp     :: stop an application
 	
 
