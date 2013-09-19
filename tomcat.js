@@ -24,9 +24,22 @@ var Args = new require('arg-parser'), args,
 		console.log(msg);
 	},
 
-	_list = function (params) {
+	_findAppAndRun = function (params) {
+		var paramApp = params.app.toLowerCase(), amb = 0, app = '';
+		_run.list({}, function (apps) {
+			apps.forEach(function (a) {
+				if (a.toLowerCase().indexOf(paramApp) > -1) { amb++; app = a; }
+			});
+			if (amb > 1) return Msg.error('Cannot find the application');
+			if (app) params.app = app;
+			_run[params.func](params);
+		});
+	},
+
+	_list = function (params, cb) {
 		var ignoredApps = [ 'ROOT', 'manager', 'docs', 'examples', 'host-manager' ],
-			apps = [ ['Path', 'Status', 'Sessions'] ];
+			apps = [ ['Path', 'Status', 'Sessions'] ],
+			appList = [];
 
 		_get('list', function (resp) {
 			resp.split('\n').forEach(function (line) {
@@ -35,11 +48,13 @@ var Args = new require('arg-parser'), args,
 				if (!line.length) return;
 				line = line.split(':');
 				if (ignoredApps.indexOf(line[3]) > -1 && !params.all && !params.app) return;
-				if (typeof params.app !== 'undefined' && line[3] !== params.app) return;
+				if (params.app && line[3] !== params.app) return;
 				// { name: line[3], status: line[1], path: line[0], sessions: line[2] }
 				apps.push([ line[0], line[1], line[2] ]);
+				appList.push(line[0].substr(1));
 			});
-			Msg.table(apps);
+			if (cb && typeof cb === 'function') cb(appList);
+			else Msg.table(apps);
 		});
 	},
 	_stop = function (params) { _get('stop?path=/' + params.app, _formatResponse); },
@@ -85,6 +100,10 @@ args.add({ name: 'func', required: true, desc: _funcDescription });
 args.add({ name: 'app', desc: 'Application name' });
 
 if (args.parse()) {
-	if (typeof _run[args.params.func] === 'function') _run[args.params.func](args.params);
+	if (args.params.app) args.params.app = args.params.app.trim('/');
+	if (typeof _run[args.params.func] === 'function') {
+		if (args.params.func === 'list') _run[args.params.func](args.params);
+		else _findAppAndRun(args.params);		// if not list - allow for partial matches of the "app" param
+	}
 	else Msg.error('Unknown function');
 }
