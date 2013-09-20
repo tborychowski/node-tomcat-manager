@@ -94,12 +94,17 @@ var Args = new require('arg-parser'), args,
 
 
 
-args = new Args('TomcatManager', '2.0', 'View and Manage Tomcat Applications');
+args = new Args('TomcatManager', '2.2', 'View and Manage Tomcat Applications');
 args.add({ name: 'all', desc: 'also show ignored applications (like /docs, /examples, /manager)', switches: ['-a', '--all'] });
 args.add({ name: 'func', required: true, desc: _funcDescription });
 args.add({ name: 'app', desc: 'Application name' });
 
 if (args.parse()) {
+	// check order: "function app" or "app function"
+	if (typeof _run[args.params.func] !== 'function' && typeof _run[args.params.app] === 'function') {
+		args.params.func = [args.params.app, args.params.app = args.params.func][0];	// swap
+	}
+
 	if (args.params.app) args.params.app = args.params.app.trim('/');
 	if (typeof _run[args.params.func] === 'function') {
 		if (args.params.func === 'list') _run[args.params.func](args.params);
