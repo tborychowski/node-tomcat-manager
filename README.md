@@ -72,8 +72,8 @@ Tips
 
  - App and Func order doesn't matter, e.g. these are equivalent:
   
-    tomcat stop myApp
-	tomcat myApp stop
+        tomcat stop myApp
+        tomcat myApp stop
 
  - You don't have to put the whole name, partial matches are fine too! If you have app called "MyTomcatApp" you can do:
  
