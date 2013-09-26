@@ -77,8 +77,9 @@ Tips
 
  - You don't have to put the whole name, partial matches are fine too! If you have app called "MyTomcatApp" you can do:
  
-    tomcat start myapp
-	tomcat start app    # provided you don't have another similar name containing "app"
+        tomcat start myapp
+        tomcat start app    # provided you don't have another similar name containing "app"
+
 	
  - Apps from config are managed using commmand line, so if commands you want to put there work in your console they should work here as well
 	
