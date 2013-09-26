@@ -1,0 +1,10 @@
+[
+	{
+		"name": "MyTomcatApp",
+		"path": "D:\\Projects\\MyTomcatApp",
+		"actions" : {
+			"deploy" : "mvn tomcat:redeploy",
+			"clean" : "mvn clean"
+		}
+	}
+]

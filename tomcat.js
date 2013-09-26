@@ -1,13 +1,41 @@
-/*global console, require, Buffer */
+String.prototype.fuzzy = function (s) {
+	var hay = this.toLowerCase(), i = 0, n = 0, l;
+	s = s.toLowerCase();
+	for (; l = s[i++] ;) if ((n = hay.indexOf(l, n)) === -1) return false;
+	return true;
+};
+
+
+/*global console, require, Buffer, __dirname, __filename */
 var Args = new require('arg-parser'), args,
 	Msg = require('node-msg'),
 	Http = require('http'),
+	FS = require('fs'),
+	Path = require('path'),
 	urlCfg = {
 		hostname: 'localhost',
 		port: 8080,
 		path: '/manager/text',
 		headers : { 'Authorization' : 'Basic ' + new Buffer('tomcat:tomcat').toString('base64') }
 	},
+
+	_funcDescription = 'One of the below:\n' +
+		'list\t\tshow applications\n' +
+		'stop\t\tstop an application\n' +
+		'start\tstart an application\n' +
+		'restart\trestart an application\n' +
+		'undeploy\tundeploy an application\n' +
+		'kill\t\tstop and undeploy an application',
+
+
+	_confFname = __dirname + '\\' + Path.basename(__filename, '.js') + '.json',
+	_conf = FS.existsSync(_confFname) ? require(_confFname) : null,
+
+
+
+
+
+	/*** HELPERS ******************************************************************************************************/
 	_get = function (path, cb) {
 		urlCfg.path = '/manager/text/' + path;
 		Http.request(urlCfg, function (res) {
@@ -18,9 +46,19 @@ var Args = new require('arg-parser'), args,
 	},
 
 	_formatResponse = function (msg) {
-		msg = msg.trim()
-			.replace(/(OK - )(.+)/g, Msg.cyan('[OK]') + ' $2')
-			.replace(/(FAIL - )(.+)/g, Msg.red('[ERROR]') + ' $2');
+		msg = ('' + msg).trim();
+		if (!msg) return;
+		msg = msg
+			.replace(/(OK - )(.+)/, Msg.cyan('[OK]') + ' $2')
+			.replace(/(FAIL - )(.+)/, Msg.red('[ERROR]') + ' $2')
+			.replace(/(\[INFO\])(.+)?/ig, Msg.cyan('[INFO]') + ' $2')
+			.replace(/(\[DEBUG\])(.+)?/ig, Msg.cyan('[DEBUG]') + ' $2')
+			.replace(/(\[WARNING\])(.+)?/ig, Msg.yellow('[WARNING]') + ' $2')
+			.replace(/(\[ERROR\])(.+)?/ig, Msg.red('[ERROR]') + ' $2')
+			.replace(/BUILD SUCCESS/ig, Msg.bold('BUILD SUCCESS'))
+			.replace(/SUCCESS/ig, Msg.bold('SUCCESS'))
+			.replace(/ERROR/ig, Msg.bold('ERROR'));
+
 		console.log(msg);
 	},
 
@@ -35,10 +73,16 @@ var Args = new require('arg-parser'), args,
 			_run[params.func](params);
 		});
 	},
+	/*** HELPERS ******************************************************************************************************/
 
+
+
+
+
+	/*** FUNCTIONS ****************************************************************************************************/
 	_list = function (params, cb) {
 		var ignoredApps = [ 'ROOT', 'manager', 'docs', 'examples', 'host-manager' ],
-			apps = [ ['Path', 'Status', 'Sessions'] ],
+			apps = [ ['Name', 'Status', 'Sessions'] ],
 			appList = [];
 
 		_get('list', function (resp) {
@@ -50,9 +94,17 @@ var Args = new require('arg-parser'), args,
 				if (ignoredApps.indexOf(line[3]) > -1 && !params.all && !params.app) return;
 				if (params.app && line[3] !== params.app) return;
 				// { name: line[3], status: line[1], path: line[0], sessions: line[2] }
-				apps.push([ line[0], line[1], line[2] ]);
-				appList.push(line[0].substr(1));
+				apps.push([ line[3], line[1], line[2] ]);
+				appList.push(line[3]);
 			});
+
+			if (_conf && _conf.length) {
+				if (apps.length > 1) apps.push([ '', '', '' ]);
+				_conf.forEach(function (app) {
+					apps.push([ app.name, 'ready', Object.keys(app.actions).join(', ') ]);
+				});
+			}
+
 			if (cb && typeof cb === 'function') cb(appList);
 			else Msg.table(apps);
 		});
@@ -76,6 +128,59 @@ var Args = new require('arg-parser'), args,
 		});
 	},
 
+	_executeConfigCmd = function (app, func) {
+		var cmd = app.actions[func], options = {}, prev = '';
+		if (app.path) options.cwd = app.path;
+		cmd = require('child_process').spawn('cmd', ['/c', cmd], options);
+		cmd.stdout.on('data', function (data) {
+			data = ('' + data).trim();
+			if (!/^\[\w+\]/.test(data)) data = prev + ' ' + data;
+			if (data && data.replace(/\[\w+\]/g, '').trim().length) _formatResponse(data);
+			prev = data.match(/\[\w+\]/)[0];
+		});
+		cmd.on('error', function (error) { _formatResponse(error); });
+	},
+	/*** FUNCTIONS ****************************************************************************************************/
+
+
+
+
+
+	/*** INIT *********************************************************************************************************/
+	_initFromConfig = function (args) {
+		var App = [], Func = [];
+
+		_conf.forEach(function (app) {
+			if (!args.params.app || !args.params.func || !app.name) return;
+			if (app.name.fuzzy(args.params.app) || app.name.fuzzy(args.params.func)) {
+				App.push(app);
+				if (app.actions[args.params.app]) Func.push(args.params.app);
+				if (app.actions[args.params.func]) Func.push(args.params.func);
+			}
+		});
+
+		if (!App.length || !Func.length) return _initDefault(args);
+		if (App.length > 1) return Msg.error('App name is ambiguous');
+		if (Func.length > 1) return Msg.error('Function name is ambiguous');
+
+		// Execute cmd from config
+		_executeConfigCmd(App[0], Func[0]);
+	},
+
+	_initDefault = function (args) {
+		// check order: "function app" or "app function"
+		if (typeof _run[args.params.func] !== 'function' && typeof _run[args.params.app] === 'function') {
+			args.params.func = [args.params.app, args.params.app = args.params.func][0];	// swap fn with appName
+		}
+
+		if (args.params.app) args.params.app = args.params.app.trim('/');
+		if (typeof _run[args.params.func] === 'function') {
+			if (args.params.func === 'list') _run[args.params.func](args.params);
+			else _findAppAndRun(args.params);		// if not list - allow for partial matches of the "app" param
+		}
+		else Msg.error('Unknown function');
+	},
+
 	_run = {
 		list : _list,
 		stop : _stop,
@@ -83,32 +188,21 @@ var Args = new require('arg-parser'), args,
 		restart : _restart,
 		undeploy : _undeploy,
 		kill : _kill	// stop & undeploy
-	},
-	_funcDescription = 'One of the below:\n' +
-		'list\t\tshow applications\n' +
-		'stop\t\tstop an application\n' +
-		'start\tstart an application\n' +
-		'restart\trestart an application\n' +
-		'undeploy\tundeploy an application\n' +
-		'kill\t\tstop and undeploy an application';
+	};
+	/*** INIT *********************************************************************************************************/
 
 
 
-args = new Args('TomcatManager', '2.2', 'View and Manage Tomcat Applications');
+
+
+
+
+args = new Args('TomcatManager', '2.3', 'View and Manage Tomcat Applications');
 args.add({ name: 'all', desc: 'also show ignored applications (like /docs, /examples, /manager)', switches: ['-a', '--all'] });
 args.add({ name: 'func', required: true, desc: _funcDescription });
 args.add({ name: 'app', desc: 'Application name' });
 
 if (args.parse()) {
-	// check order: "function app" or "app function"
-	if (typeof _run[args.params.func] !== 'function' && typeof _run[args.params.app] === 'function') {
-		args.params.func = [args.params.app, args.params.app = args.params.func][0];	// swap
-	}
-
-	if (args.params.app) args.params.app = args.params.app.trim('/');
-	if (typeof _run[args.params.func] === 'function') {
-		if (args.params.func === 'list') _run[args.params.func](args.params);
-		else _findAppAndRun(args.params);		// if not list - allow for partial matches of the "app" param
-	}
-	else Msg.error('Unknown function');
+	if (_conf) _initFromConfig(args);
+	else _initDefault(args);
 }
