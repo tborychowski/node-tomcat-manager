@@ -57,7 +57,7 @@ var Args = new require('arg-parser'), args,
 			.replace(/(\[ERROR\])(.+)?/ig, Msg.red('[ERROR]') + ' $2')
 			.replace(/BUILD SUCCESS/ig, Msg.bold('BUILD SUCCESS'))
 			.replace(/SUCCESS/ig, Msg.bold('SUCCESS'))
-			.replace(/ERROR/ig, Msg.bold('ERROR'));
+			.replace(/ERROR/ig, Msg.red('ERROR'));
 
 		console.log(msg);
 	},
@@ -92,7 +92,7 @@ var Args = new require('arg-parser'), args,
 				if (!line.length) return;
 				line = line.split(':');
 				if (ignoredApps.indexOf(line[3]) > -1 && !params.all && !params.app) return;
-				if (params.app && line[3] !== params.app) return;
+				if (params.app && !line[3].fuzzy(params.app)) return;
 				// { name: line[3], status: line[1], path: line[0], sessions: line[2] }
 				apps.push([ line[3], line[1], line[2] ]);
 				appList.push(line[3]);
@@ -101,7 +101,8 @@ var Args = new require('arg-parser'), args,
 			if (_conf && _conf.length) {
 				if (apps.length > 1) apps.push([ '', '', '' ]);
 				_conf.forEach(function (app) {
-					apps.push([ app.name, 'ready', Object.keys(app.actions).join(', ') ]);
+					if (params.app && !app.name.fuzzy(params.app)) return;
+					apps.push([ app.name, 'config:', Object.keys(app.actions).join(', ') ]);
 				});
 			}
 
@@ -129,13 +130,24 @@ var Args = new require('arg-parser'), args,
 	},
 
 	_executeConfigCmd = function (app, func) {
-		var cmd = app.actions[func], options = {}, prev = '';
+		var cmd = app.actions[func], options = {}, prev = '', tmp, type;
 		if (app.path) options.cwd = app.path;
 		cmd = require('child_process').spawn('cmd', ['/c', cmd], options);
+
 		cmd.stdout.on('data', function (data) {
 			data = ('' + data).trim();
+
 			if (!/^\[\w+\]/.test(data)) data = prev + ' ' + data;
-			if (data && data.replace(/\[\w+\]/g, '').trim().length) _formatResponse(data);
+
+			if (data && data.replace(/\[\w+\]/g, '').trim().length) {			// if there's more text than [info]
+				// show errors only (if not -V)
+				if (args.params.verbose || (/ERROR|FAIL/ig).test(data)) _formatResponse(data);
+				else {
+					type = data.match(/\[\w+\]/)[0];
+					tmp = data.replace(/\[\w+\]/g, '').replace(/\-\-/g, '').trim();
+					if ((/success/ig).test(tmp)) _formatResponse(type + tmp);
+				}
+			}
 			prev = data.match(/\[\w+\]/)[0];
 		});
 		cmd.on('error', function (error) { _formatResponse(error); });
@@ -147,7 +159,7 @@ var Args = new require('arg-parser'), args,
 
 
 	/*** INIT *********************************************************************************************************/
-	_initFromConfig = function (args) {
+	_initFromConfig = function () {
 		var App = [], Func = [];
 
 		_conf.forEach(function (app) {
@@ -159,7 +171,7 @@ var Args = new require('arg-parser'), args,
 			}
 		});
 
-		if (!App.length || !Func.length) return _initDefault(args);
+		if (!App.length || !Func.length) return _initDefault();
 		if (App.length > 1) return Msg.error('App name is ambiguous');
 		if (Func.length > 1) return Msg.error('Function name is ambiguous');
 
@@ -167,7 +179,7 @@ var Args = new require('arg-parser'), args,
 		_executeConfigCmd(App[0], Func[0]);
 	},
 
-	_initDefault = function (args) {
+	_initDefault = function () {
 		// check order: "function app" or "app function"
 		if (typeof _run[args.params.func] !== 'function' && typeof _run[args.params.app] === 'function') {
 			args.params.func = [args.params.app, args.params.app = args.params.func][0];	// swap fn with appName
@@ -199,10 +211,11 @@ var Args = new require('arg-parser'), args,
 
 args = new Args('TomcatManager', '2.3', 'View and Manage Tomcat Applications');
 args.add({ name: 'all', desc: 'also show ignored applications (like /docs, /examples, /manager)', switches: ['-a', '--all'] });
+args.add({ name: 'verbose', desc: 'show all output (e.g. "deploy" or "clean" from config)', switches: ['-V', '--verbose'] });
 args.add({ name: 'func', required: true, desc: _funcDescription });
 args.add({ name: 'app', desc: 'Application name' });
 
 if (args.parse()) {
-	if (_conf) _initFromConfig(args);
-	else _initDefault(args);
+	if (_conf) _initFromConfig();
+	else _initDefault();
 }
