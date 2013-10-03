@@ -134,6 +134,8 @@ var Args = new require('arg-parser'), args,
 		if (app.path) options.cwd = app.path;
 		cmd = require('child_process').spawn('cmd', ['/c', cmd], options);
 
+		cmd.stderr.on('data', function (data) { Msg.error(data); });
+
 		cmd.stdout.on('data', function (data) {
 			data = ('' + data).trim();
 
@@ -171,6 +173,7 @@ var Args = new require('arg-parser'), args,
 			}
 		});
 
+
 		if (!App.length || !Func.length) return _initDefault();
 		if (App.length > 1) return Msg.error('App name is ambiguous');
 		if (Func.length > 1) return Msg.error('Function name is ambiguous');
@@ -178,6 +181,7 @@ var Args = new require('arg-parser'), args,
 		// Execute cmd from config
 		_executeConfigCmd(App[0], Func[0]);
 	},
+
 
 	_initDefault = function () {
 		// check order: "function app" or "app function"
