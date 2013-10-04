@@ -1,10 +1,17 @@
-[
-	{
-		"name": "MyTomcatApp",
-		"path": "D:\\Projects\\MyTomcatApp",
-		"actions" : {
-			"deploy" : "mvn tomcat:redeploy",
-			"clean" : "mvn clean"
+{
+	"tomcat": {
+		"loginpass": "tomcat:tomcat",
+		"path": "D:\\apache-tomcat-7.0.32\\bin"
+	},
+	
+	"apps": [
+		{
+			"name": "MyTomcatApp",
+			"path": "D:\\Projects\\MyTomcatApp",
+			"actions" : {
+				"deploy" : "mvn tomcat:redeploy",
+				"clean" : "mvn clean"
+			}
 		}
-	}
-]
+	]
+}

@@ -6,23 +6,16 @@ String.prototype.fuzzy = function (s) {
 };
 
 
-/*global console, require, Buffer, __dirname, __filename */
+/*global process, require, Buffer, __dirname, __filename */
 var Args = new require('arg-parser'), args,
 	Msg = require('node-msg'),
 	Http = require('http'),
 	FS = require('fs'),
 	Path = require('path'),
-	urlCfg = {
-		hostname: 'localhost',
-		port: 8080,
-		path: '/manager/text',
-		headers : { 'Authorization' : 'Basic ' + new Buffer('tomcat:tomcat').toString('base64') }
-	},
-
 	_funcDescription = 'One of the below:\n' +
 		'list\t\tshow applications\n' +
-		'stop\t\tstop an application\n' +
-		'start\tstart an application\n' +
+		'stop\t\tstop an application or Tomcat server\n' +
+		'start\tstart an application or Tomcat server\n' +
 		'restart\trestart an application\n' +
 		'undeploy\tundeploy an application\n' +
 		'kill\t\tstop and undeploy an application',
@@ -30,19 +23,32 @@ var Args = new require('arg-parser'), args,
 
 	_confFname = __dirname + '\\' + Path.basename(__filename, '.js') + '.json',
 	_conf = FS.existsSync(_confFname) ? require(_confFname) : null,
-
+	urlCfg = null,
 
 
 
 
 	/*** HELPERS ******************************************************************************************************/
-	_get = function (path, cb) {
+	_get = function (path, cb, errorcb) {
+		var resp = '', lp = 'tomcat:tomcat';
+		if (!urlCfg) {
+			if (_conf && _conf.tomcat && _conf.tomcat.loginpass) lp = _conf.tomcat.loginpass;
+			urlCfg = {
+				hostname: 'localhost',
+				port: 8080,
+				path: '/manager/text',
+				headers : { 'Authorization' : 'Basic ' + new Buffer(lp).toString('base64') }
+			};
+		}
 		urlCfg.path = '/manager/text/' + path;
 		Http.request(urlCfg, function (res) {
-			var resp = '';
 			res.on('data', function (chunk) { resp += chunk; });
-			res.on('end', function () { cb(resp); });
-		}).on('error', function (e) { console.log('Error: ' + e.message); }).end();
+			res.on('end', function () { if (typeof cb === 'function') cb(resp); });
+		}).on('error', function (e) {
+			if (typeof errorcb === 'function') errorcb();
+			else if (e && e.code === 'ECONNREFUSED') Msg.error('Server is not running!');
+			else Msg.error(e);
+		}).end();
 	},
 
 	_formatResponse = function (msg) {
@@ -59,11 +65,11 @@ var Args = new require('arg-parser'), args,
 			.replace(/SUCCESS/ig, Msg.bold('SUCCESS'))
 			.replace(/ERROR/ig, Msg.red('ERROR'));
 
-		console.log(msg);
+		Msg.log(msg);
 	},
 
 	_findAppAndRun = function (params) {
-		var paramApp = params.app.toLowerCase(), amb = 0, app = '';
+		var paramApp = params.app && params.app.toLowerCase(), amb = 0, app = '';
 		_run.list({}, function (apps) {
 			apps.forEach(function (a) {
 				if (a.toLowerCase().indexOf(paramApp) > -1) { amb++; app = a; }
@@ -72,6 +78,18 @@ var Args = new require('arg-parser'), args,
 			if (app) params.app = app;
 			_run[params.func](params);
 		});
+	},
+
+	/**
+	 * Check the order: "function app" or "app function" and switch if needed
+	 */
+	_checkArgsOrder = function () {
+		if (args.params.app) args.params.app = args.params.app.trim('/');
+		if (args.params.func) args.params.func = args.params.func.trim('/');
+
+		if (typeof _run[args.params.func] !== 'function' && typeof _run[args.params.app] === 'function') {
+			args.params.func = [args.params.app, args.params.app = args.params.func][0];	// swap fn with appName
+		}
 	},
 	/*** HELPERS ******************************************************************************************************/
 
@@ -98,9 +116,9 @@ var Args = new require('arg-parser'), args,
 				appList.push(line[3]);
 			});
 
-			if (_conf && _conf.length) {
+			if (_conf && _conf.apps && _conf.apps.length) {
 				if (apps.length > 1) apps.push([ '', '', '' ]);
-				_conf.forEach(function (app) {
+				_conf.apps.forEach(function (app) {
 					if (params.app && !app.name.fuzzy(params.app)) return;
 					apps.push([ app.name, 'config:', Object.keys(app.actions).join(', ') ]);
 				});
@@ -112,7 +130,7 @@ var Args = new require('arg-parser'), args,
 	},
 	_stop = function (params) { _get('stop?path=/' + params.app, _formatResponse); },
 	_start = function (params) {
-		console.log('Starting ' + params.app + '...');
+		Msg.log('Starting ' + params.app + '...');
 		_get('start?path=/' + params.app, _formatResponse);
 	},
 	_undeploy = function (params) { _get('undeploy?path=/' + params.app, _formatResponse); },
@@ -129,30 +147,59 @@ var Args = new require('arg-parser'), args,
 		});
 	},
 
-	_executeConfigCmd = function (app, func) {
-		var cmd = app.actions[func], options = {}, prev = '', tmp, type;
-		if (app.path) options.cwd = app.path;
-		cmd = require('child_process').spawn('cmd', ['/c', cmd], options);
+	_executeConfigCmd = function (cmd, options, isServerCmd) {
+		var cli = require('child_process').spawn('cmd', ['/c', cmd], options || {}), prev = '', tmp, type;
 
-		cmd.stderr.on('data', function (data) { Msg.error(data); });
+		cli.stderr.on('data', function (data) {
+			if (!isServerCmd) Msg.error(data);
+			else if (('' + data).indexOf('Server startup in') > -1) {
+				Msg.success('Server started!\n');
+				if (!args.params.verbose) process.exit(0);
+			}
+		});
 
-		cmd.stdout.on('data', function (data) {
+		cli.stdout.on('data', function (data) {
+			if (isServerCmd) {
+				if (args.params.verbose) Msg.log(data);
+				return;
+			}
 			data = ('' + data).trim();
-
 			if (!/^\[\w+\]/.test(data)) data = prev + ' ' + data;
-
 			if (data && data.replace(/\[\w+\]/g, '').trim().length) {			// if there's more text than [info]
 				// show errors only (if not -V)
 				if (args.params.verbose || (/ERROR|FAIL/ig).test(data)) _formatResponse(data);
 				else {
-					type = data.match(/\[\w+\]/)[0];
+					type = data.match(/\[\w+\]/);
+					if (type && type.length) type = type[0];
 					tmp = data.replace(/\[\w+\]/g, '').replace(/\-\-/g, '').trim();
 					if ((/success/ig).test(tmp)) _formatResponse(type + tmp);
 				}
 			}
-			prev = data.match(/\[\w+\]/)[0];
+			prev = data.match(/\[\w+\]/);
+			if (prev && prev.length) prev = prev[0];
 		});
-		cmd.on('error', function (error) { _formatResponse(error); });
+		cli.on('error', function (error) { _formatResponse(error); });
+	},
+
+
+	_serverFunc = function (func, isRunning) {
+		if (typeof isRunning === 'undefined') {
+			return _get('serverinfo', function () { _serverFunc(func, true); },
+				function () { _serverFunc(func, false); });
+		}
+
+		if (isRunning && func === 'start') return Msg.error('Server already started!');
+		if (!isRunning && func === 'stop') return Msg.error('Server is not running!');
+
+		if (!isRunning && func === 'start') {
+			Msg.log('Starting Tomcat...');
+			_executeConfigCmd(_conf.tomcat.path + '\\startup.bat', { cwd: _conf.tomcat.path }, true);
+		}
+
+		if (isRunning && func === 'stop') {
+			Msg.log('Stopping Tomcat...');
+			_executeConfigCmd(_conf.tomcat.path + '\\shutdown.bat', { cwd: _conf.tomcat.path }, true);
+		}
 	},
 	/*** FUNCTIONS ****************************************************************************************************/
 
@@ -162,9 +209,10 @@ var Args = new require('arg-parser'), args,
 
 	/*** INIT *********************************************************************************************************/
 	_initFromConfig = function () {
-		var App = [], Func = [];
+		var App = [], Func = [], options = {};
 
-		_conf.forEach(function (app) {
+		if (!_conf || !_conf.apps || !_conf.apps.length) return;
+		_conf.apps.forEach(function (app) {
 			if (!args.params.app || !args.params.func || !app.name) return;
 			if (app.name.fuzzy(args.params.app) || app.name.fuzzy(args.params.func)) {
 				App.push(app);
@@ -173,26 +221,23 @@ var Args = new require('arg-parser'), args,
 			}
 		});
 
-
 		if (!App.length || !Func.length) return _initDefault();
 		if (App.length > 1) return Msg.error('App name is ambiguous');
 		if (Func.length > 1) return Msg.error('Function name is ambiguous');
 
 		// Execute cmd from config
-		_executeConfigCmd(App[0], Func[0]);
+		if (App[0].path) options.cwd = App[0].path;
+		_executeConfigCmd(App[0].actions[Func[0]], options);
 	},
 
 
 	_initDefault = function () {
-		// check order: "function app" or "app function"
-		if (typeof _run[args.params.func] !== 'function' && typeof _run[args.params.app] === 'function') {
-			args.params.func = [args.params.app, args.params.app = args.params.func][0];	// swap fn with appName
-		}
+		_checkArgsOrder();
 
-		if (args.params.app) args.params.app = args.params.app.trim('/');
 		if (typeof _run[args.params.func] === 'function') {
 			if (args.params.func === 'list') _run[args.params.func](args.params);
-			else _findAppAndRun(args.params);		// if not list - allow for partial matches of the "app" param
+			else if (args.params.app) _findAppAndRun(args.params);		// if not list - allow for partial matches of the "app" param
+			else if (_conf.tomcat && _conf.tomcat.path) _serverFunc(args.params.func);
 		}
 		else Msg.error('Unknown function');
 	},
