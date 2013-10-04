@@ -19,7 +19,7 @@ Make sure you have a user "tomcat" with password "tomcat" and manager roles assi
 		<user username="tomcat" password="tomcat" roles="manager-gui, manager-script"/>
 	</tomcat-users>
 
-If you have different username or password, please change it in the `tomcat.json` [config](#Config).
+If you have different username or password, please change it in the `tomcat.json` [config](#config).
 
 **Usage:**
 
