@@ -11,7 +11,7 @@ Install
 
 Usage
 -----
-Make sure you have a user "tomcat" with password "tomcat" and manager roles assigned, in your tomcat-users.xml file, e.g.:
+Make sure you have a user "tomcat" with password "tomcat" and manager roles assigned, in your `tomcat-users.xml` file, e.g.:
 
 	<tomcat-users>
 		<role rolename="manager-gui"/>
