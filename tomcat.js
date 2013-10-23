@@ -126,6 +126,19 @@ var Args = new require('arg-parser'), args,
 
 			if (cb && typeof cb === 'function') cb(appList);
 			else Msg.table(apps);
+		}, function () {												// server not running - do only the conf part
+			Msg.error('Server is not running!');
+
+			if (_conf && _conf.apps && _conf.apps.length) {
+				if (apps.length > 1) apps.push([ '', '', '' ]);
+				_conf.apps.forEach(function (app) {
+					if (params.app && !app.name.fuzzy(params.app)) return;
+					apps.push([ app.name, 'config:', Object.keys(app.actions).join(', ') ]);
+				});
+			}
+
+			if (cb && typeof cb === 'function') cb(appList);
+			else Msg.table(apps);
 		});
 	},
 	_stop = function (params) { _get('stop?path=/' + params.app, _formatResponse); },
