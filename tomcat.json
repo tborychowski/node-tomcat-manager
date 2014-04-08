@@ -10,7 +10,8 @@
 			"path": "D:\\Projects\\MyTomcatApp",
 			"actions" : {
 				"deploy" : "mvn tomcat:redeploy",
-				"clean" : "mvn clean"
+				"clean" : "mvn clean",
+				"delete" : "rm -r D:\\apache-tomcat-7.0.32\\webapps\\MyTomcatApp"
 			}
 		}
 	]

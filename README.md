@@ -31,12 +31,18 @@ If you have different username or password, please change it in the `tomcat.json
 tomcat [options] <func> <app>
 
 <func>			One of the below:
-					list         show applications
-					stop         stop an application or Tomcat server
-					start        start an application or Tomcat server
-					restart      restart an application
-					undeploy     undeploy an application
-					kill         stop and undeploy an application
+                   list         show applications
+                   stop         stop an application
+                   start        start an application
+                   restart      restart an application
+                   undeploy     undeploy an application
+                   kill         stop -> undeploy
+
+                   deploy       deploy app to the server
+                   clean        clean-up the build folders
+                   delete       remove the app folder from the server
+                   redeploy     stop -> undeploy -> clean -> deploy
+
 <app>			Application name
 
 -V, --verbose   show all output (e.g. "deploy" or "clean" from config)
@@ -50,15 +56,14 @@ Examples
 ```bash
 tomcat list -a        # show all deployed applications
 tomcat stop myApp     # stop an application
-tomcat start          # start tomcat server and exit (requires the tomcat.json config file)
-tomcat start -V       # start tomcat server with log (requires the tomcat.json config file)
+tomcat myApp kill     # stop and undeploy an app
 ```
 
 
 
 Config
 ------
-You can also create a config file to manage undeployed apps! If you create `tomcat.json` in the same folder as script, e.g.:
+You need a config file to manage undeployed apps. Create a `tomcat.json` file in the same folder as script:
 
 ```json
 {
@@ -73,17 +78,19 @@ You can also create a config file to manage undeployed apps! If you create `tomc
 			"path": "D:\\Projects\\MyTomcatApp",
 			"actions" : {
 				"deploy" : "mvn tomcat:redeploy",
-				"clean" : "mvn clean"
+				"clean" : "mvn clean",
+				"delete" : "rm -r D:\\apache-tomcat-7.0.32\\webapps\\MyTomcatApp"
 			}
 		}
 	]
 }
 ```
 
-With the above file `tomcat list` would also show you apps from config with possible functions you can use on them. You can then do:
+With the above file `tomcat list` would also show you apps from config. You can then do:
 
 ```bash
 tomcat deploy MyTomcatApp
+tomcat MyTomcatApp redeploy
 ```
 
 

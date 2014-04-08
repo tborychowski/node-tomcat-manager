@@ -1,7 +1,7 @@
 {
   "name": "node-tomcat-manager",
   "description": "nodejs tomcat manager",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "dependencies": {
     "arg-parser": "latest",
     "node-msg": "latest"
