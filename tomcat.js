@@ -1,7 +1,6 @@
 // jshint -W084
-String.prototype.fuzzy = function (s) {
-	var hay = this.toLowerCase(), i = 0, n = -1, l;
-	s = s.toLowerCase();
+String.prototype.fuzzy = function (str) {
+	var hay = this.toLowerCase(), i = 0, n = -1, l, s = str.toLowerCase();
 	for (; l = s[i++] ;) if (!~(n = hay.indexOf(l, n + 1))) return false;
 	return true;
 };
@@ -13,6 +12,7 @@ var Args = new require('arg-parser'), args,
 	Http = require('http'),
 	FS = require('fs'),
 	Path = require('path'),
+	Q = require('q'),
 	_funcDescription = 'One of the below:\n' +
 		'list\t\tshow applications\n' +
 		'stop\t\tstop an application\n' +
@@ -90,7 +90,7 @@ var Args = new require('arg-parser'), args,
 
 
 	/*** FUNCTIONS ****************************************************************************************************/
-	_list = function (params, cb) {
+	_list = function (params, callback) {
 		var ignoredApps = [ 'ROOT', 'manager', 'docs', 'examples', 'host-manager' ],
 			apps = [ ['Name', 'Status', 'Sessions'] ],
 			appList = [];
@@ -118,7 +118,7 @@ var Args = new require('arg-parser'), args,
 				});
 			}
 
-			if (cb && typeof cb === 'function') cb(appList);
+			if (callback && typeof callback === 'function') callback(appList);
 			else Msg.table(apps);
 
 		}, function () {												// server not running - do only the conf part
@@ -128,55 +128,85 @@ var Args = new require('arg-parser'), args,
 				if (apps.length > 1) apps.push([ '', '', '' ]);
 				_conf.apps.forEach(function (app) {
 					if (params.app && !app.name.fuzzy(params.app)) return;
-					apps.push([ app.name, 'config:', Object.keys(app.actions).join(', ') ]);
+					apps.push([ app.name, 'not deployed', '' ]);
 				});
 			}
 
-			if (cb && typeof cb === 'function') cb(appList);
+			if (callback && typeof callback === 'function') callback(appList);
 			else Msg.table(apps);
 		});
 	},
 
-	_stop = function (params) { _get('stop?path=/' + params.app, _formatResponse); },
+	_stop = function (params) {
+		var defer = Q.defer();
+		_get('stop?path=/' + params.app, function (resp) {
+			_formatResponse(resp);
+			defer.resolve(params);
+		});
+		return defer.promise;
+	},
 
 	_start = function (params) {
+		var defer = Q.defer();
 		Msg.log('Starting ' + params.app + '...');
-		_get('start?path=/' + params.app, _formatResponse);
+		_get('start?path=/' + params.app, function (resp) {
+			_formatResponse(resp);
+			defer.resolve(params);
+		});
+		return defer.promise;
 	},
 
-	_undeploy = function (params) { _get('undeploy?path=/' + params.app, _formatResponse); },
+	_undeploy = function (params) {
+		var defer = Q.defer();
+		_get('undeploy?path=/' + params.app, function (resp) {
+			_formatResponse(resp);
+			defer.resolve(params);
+		});
+		return defer.promise;
+	},
+
+
+	_clean = function (params) {
+		var defer = Q.defer();
+		_runUndeployed({ app: params.app, func: 'clean' }, function (resp) {
+			_formatResponse(resp);
+			defer.resolve(params);
+		});
+		return defer.promise;
+	},
+
+	_deploy = function (params) {
+		var defer = Q.defer();
+		_runUndeployed({ app: params.app, func: 'deploy' }, function (resp) {
+			_formatResponse(resp);
+			defer.resolve(params);
+		});
+		return defer.promise;
+	},
 
 	_restart = function (params) {
-		_get('stop?path=/' + params.app, function (resp) {
-			_formatResponse(resp);
-			_start(params);
-		});
+		var defer = Q.defer();
+		_stop(params).then(_start).then(function (params) { defer.resolve(params); });
+		return defer.promise;
 	},
 
+
+	// stop -> undeploy
 	_kill = function (params) {
-		_get('stop?path=/' + params.app, function (resp) {
-			_formatResponse(resp);
-			_undeploy(params);
-		});
+		var defer = Q.defer();
+		_stop(params).then(_undeploy).then(function (params) { defer.resolve(params); });
+		return defer.promise;
 	},
 
+	// stop -> undeploy -> clean -> deploy
 	_redeploy = function (params) {
-		_get('stop?path=/' + params.app, function (resp) {					// stop
-			_formatResponse(resp);
-			_get('undeploy?path=/' + params.app, function (resp) {			// undeploy
-				_formatResponse(resp);
-				_runUndeployed({ app: params.app, func: 'clean' }, function (resp) {
-					_formatResponse(resp);
-					_runUndeployed({ app: params.app, func: 'deploy' }, _formatResponse);
-				});
-			});
-		});
+		var defer = Q.defer();
+		_kill(params).then(_clean).then(_deploy).then(function (params) { defer.resolve(params); });
+		return defer.promise;
 	},
 
 	_executeConfigCmd = function (cmd, path, callback) {
-		var prev = '', tmp, type,
-			cli = require('child_process').spawn('cmd', ['/c', cmd], { cwd: path });
-
+		var cli = require('child_process').spawn('cmd', ['/c', cmd], { cwd: path }), prev = '', tmp, type;
 		cli.on('error', callback);
 		cli.stderr.on('data', Msg.error);
 		cli.stdout.on('data', function (data) {
@@ -238,6 +268,8 @@ var Args = new require('arg-parser'), args,
 		else Msg.error('Unknown function');
 	},
 
+
+	// only deployed functions (and shortcuts: kill, redeploy)
 	_run = {
 		list : _list,
 		stop : _stop,
@@ -255,9 +287,9 @@ var Args = new require('arg-parser'), args,
 
 
 
-args = new Args('TomcatManager', '2.3', 'View and Manage Tomcat Applications');
+args = new Args('TomcatManager', '3.1', 'View and Manage Tomcat Applications');
 args.add({ name: 'all', desc: 'also show ignored applications (like /docs, /examples, /manager)', switches: ['-a', '--all'] });
-args.add({ name: 'verbose', desc: 'show all output (e.g. "deploy" or "clean" from config)', switches: ['-V', '--verbose'] });
+args.add({ name: 'verbose', desc: 'show all output (e.g. for "deploy" or "clean")', switches: ['-V', '--verbose'] });
 args.add({ name: 'func', required: true, desc: _funcDescription });
 args.add({ name: 'app', desc: 'Application name' });
 
