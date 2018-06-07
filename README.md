@@ -115,7 +115,3 @@ tomcat start app    # provided you don't have another similar name containing "a
 
  - Apps from config are managed using commmand line, so if commands you want to put there work in your console they should work here as well
 
-License
--------
-
-*MIT*
